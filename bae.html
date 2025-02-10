@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Secure Transaction System{% endblock %}</title>
+    
+    <!-- Internal CSS -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f4f4f4;
+            color: #333;
+            text-align: center;
+            padding-top: 50px;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 600px;
+            background: #fff;
+            margin: 20px auto;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #333;
+        }
+
+        .navbar {
+            background: #007bff;
+            padding: 10px 0;
+        }
+
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .navbar a:hover {
+            text-decoration: underline;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            background: #0056b3;
+        }
+
+        .flash-messages {
+            list-style: none;
+            padding: 10px;
+            margin: 10px auto;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .flash-messages li {
+            background: #ffcccb;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 5px solid red;
+            text-align: left;
+        }
+
+        .success {
+            background: #d4edda;
+            border-left: 5px solid green;
+        }
+
+        .danger {
+            background: #f8d7da;
+            border-left: 5px solid red;
+        }
+
+        .info {
+            background: #cce5ff;
+            border-left: 5px solid blue;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navbar -->
+    <div class="navbar">
+        <a href="{{ url_for('home') }}">Home</a>
+        {% if 'username' in session %}
+            <a href="{{ url_for('balance') }}">Balance</a>
+            <a href="{{ url_for('pay') }}">Pay</a>
+            <a href="{{ url_for('transaction_history') }}">History</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        {% else %}
+            <a href="{{ url_for('login') }}">Login</a>
+            <a href="{{ url_for('signup') }}">Sign Up</a>
+        {% endif %}
+    </div>
+
+    <!-- Flash Messages -->
+    <ul class="flash-messages">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <li class="{{ category }}">{{ message }}</li>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </ul>
+
+    <!-- Main Content -->
+    <div class="container">
+        {% block content %}
+        {% endblock %}
+    </div>
+
+</body>
+</html>

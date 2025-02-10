@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+
+        h1 {
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        .welcome-message {
+            font-size: 24px;
+            color: #007BFF;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .container {
+            width: 80%;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .alert {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            border: 1px solid #f5c6cb;
+            text-align: center;
+        }
+
+        .search-bar {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .search-bar input {
+            padding: 10px;
+            width: 300px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .user-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 20px;
+        }
+
+        .user-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+
+        .logout-button {
+            padding: 10px 20px;
+            background-color: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: block;
+            margin: 20px auto;
+        }
+
+        .links {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .links a {
+            margin: 10px;
+            text-decoration: none;
+            font-size: 18px;
+            color: #007BFF;
+        }
+        button[type="submit"] {
+            background-color: #4CAF50; /* Green */
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Payment Page</h1>
+    <p class="welcome-message">Welcome, {{ current_user }}! Please make a payment.</p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    <div class="container">
+        <div class="search-bar">
+            <input type="text" id="search" placeholder="Search users..." onkeyup="searchUsers()">
+        </div>
+        <div class="results">
+            {% if users %}
+                <h3>Users:</h3>
+                <ul class="user-list" id="userList">
+                    {% for user in users %}
+                        <li>
+                            {{ user.username }}
+                            <form method="POST" action="{{ url_for('pay') }}" style="display:inline;">
+                                <input type="number" name="amount" placeholder="Amount" required>
+                                <input type="hidden" name="to_user" value="{{ user.username }}">
+                                <button type="submit">Pay</button>
+                            </form>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="message">No users found.</p>
+            {% endif %}
+        </div>
+        <div class="links">
+            <a href="{{ url_for('balance') }}">Check Balance</a>
+            <a href="{{ url_for('transaction_history') }}">Transaction History</a>
+        </div>
+        <a href="{{ url_for('logout') }}">
+            <button class="logout-button">Logout</button>
+        </a>
+    </div>
+    <script>
+        function searchUsers() {
+            let input = document.getElementById('search').value.toLowerCase();
+            let users = document.getElementById('userList').getElementsByTagName('li');
+            for (let i = 0; i < users.length; i++) {
+                let username = users[i].textContent.toLowerCase();
+                if (username.includes(input)) {
+                    users[i].style.display = "flex";
+                } else {
+                    users[i].style.display = "none";
+                }
+            }
+        }
+    </script>
+</body>
+</html>
