@@ -19,10 +19,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = os.getenv('SECRET_KEY', 'your_secret_key')  # Use env var for secret key
 
 # Initialize the TRANSACTIONS dictionary in app.config
-app.config['TRANSACTIONS'] = {}
+app.config['TRANSACTIONS'] = {}  # Store transactions temporarily
 
 # Email configuration
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
@@ -41,7 +41,11 @@ db_config = {
 }
 
 def get_db_connection():
-    return mysql.connector.connect(**db_config)
+    try:
+        return mysql.connector.connect(**db_config)
+    except mysql.connector.Error as err:
+        flash(f"Database connection error: {err}", 'danger')
+        return None  # Crucial: Return None if connection fails
 
 # Generate RSA keys
 def generate_rsa_keys():
@@ -99,6 +103,9 @@ def signup():
         try:
             hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
             conn = get_db_connection()
+            if conn is None:  # Check for connection failure
+                return render_template('signup.html')
+
             cursor = conn.cursor()
 
             query_user = """
@@ -122,8 +129,9 @@ def signup():
         except mysql.connector.Error as err:
             flash(f"Database Error: {err}", 'danger')
         finally:
-            cursor.close()
-            conn.close()
+            if conn: # Check if connection exists before closing
+                cursor.close()
+                conn.close()
     return render_template('signup.html')
 
 # Login Route
@@ -134,6 +142,8 @@ def login():
         password = request.form['password']
         try:
             conn = get_db_connection()
+            if conn is None:
+                return render_template('login.html')
             cursor = conn.cursor()
             cursor.execute("SELECT password FROM user1 WHERE username = %s", (username,))
             result = cursor.fetchone()
@@ -146,8 +156,9 @@ def login():
         except mysql.connector.Error as err:
             flash(f"Database Error: {err}", 'danger')
         finally:
-            cursor.close()
-            conn.close()
+            if conn:
+                cursor.close()
+                conn.close()
     return render_template('login.html')
 
 # Balance Route
@@ -158,6 +169,8 @@ def balance():
         return redirect(url_for('login'))
     try:
         conn = get_db_connection()
+        if conn is None:
+            return redirect(url_for('pay'))  # Redirect on connection failure
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT balance FROM balance WHERE username = %s", (session['username'],))
         current_user = cursor.fetchone()
@@ -166,8 +179,9 @@ def balance():
         flash(f"Database Error: {err}", 'danger')
         return redirect(url_for('pay'))
     finally:
-        cursor.close()
-        conn.close()
+        if conn:
+            cursor.close()
+            conn.close()
     return render_template('balance.html', balance=user_balance)
 
 # Payment Page Route
@@ -179,9 +193,13 @@ def pay():
 
     users = []
     balance = 0
+    transaction_history = []  # Initialize transaction history
 
     try:
         conn = get_db_connection()
+        if conn is None:
+            return render_template('pay.html', users=[], balance=0, current_user=session['username'], transaction_history=[])
+
         cursor = conn.cursor(dictionary=True)
 
         # Fetch all users except the logged-in user
@@ -193,13 +211,18 @@ def pay():
         current_user = cursor.fetchone()
         balance = current_user['balance'] if current_user else 0
 
+        # Fetch transaction history for the user
+        # LIMIT is removed here because the full transaction history is now on its own page
+        cursor.execute("SELECT * FROM transaction_history WHERE username = %s ORDER BY date DESC", (session['username'],))
+        transaction_history = cursor.fetchall() #This was previously limited, but is not anymore.
+
         if request.method == 'POST':
             to_user = request.form.get('to_user')
             amount = float(request.form.get('amount'))
 
             if amount <= 0:
                 flash('Please enter a positive amount.', 'danger')
-                return render_template('pay.html', users=users, balance=balance, current_user=session['username'])
+                return render_template('pay.html', users=users, balance=balance, current_user=session['username'], transaction_history=transaction_history)
 
             # Get recipient's email
             cursor.execute("SELECT email FROM user1 WHERE username = %s", (to_user,))
@@ -207,13 +230,13 @@ def pay():
 
             if not recipient_data:
                 flash("Recipient not found!", "danger")
-                return render_template('pay.html', users=users, balance=balance, current_user=session['username'])
+                return render_template('pay.html', users=users, balance=balance, current_user=session['username'], transaction_history=transaction_history)
 
             recipient_email = recipient_data['email']
 
             if balance < amount:
                 flash('Insufficient balance.', 'danger')
-                return render_template('pay.html', users=users, balance=balance, current_user=session['username'])
+                return render_template('pay.html', users=users, balance=balance, current_user=session['username'], transaction_history=transaction_history)
 
             # Transaction logic using RSA encryption
             sender_private_key, sender_public_key = generate_rsa_keys()
@@ -263,17 +286,19 @@ def pay():
             except Exception as e:
                 flash(f"Payment initiated, but email not sent: {str(e)}", "warning")
 
-            return render_template('pay.html', users=users, balance=balance, current_user=session['username'])
+            return render_template('pay.html', users=users, balance=balance, current_user=session['username'], transaction_history=transaction_history)
 
-        return render_template('pay.html', users=users, balance=balance, current_user=session['username'])
+        # Pass transaction_history to the template
+        return render_template('pay.html', users=users, balance=balance, current_user=session['username'], transaction_history=transaction_history)
 
     except mysql.connector.Error as err:
         flash(f"Database Error: {err}", 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if conn:
+            cursor.close()
+            conn.close()
 
-    return render_template('pay.html', users=users, balance=balance, current_user=session['username'])
+    return render_template('pay.html', users=users, balance=balance, current_user=session['username'], transaction_history=[])
 
 # Route for completing the transaction using OTP
 @app.route('/complete_transaction/<transaction_id>', methods=['GET', 'POST'])
@@ -314,10 +339,20 @@ def complete_transaction(transaction_id):
 
             # Save transaction history
             date = datetime.datetime.now().strftime('%Y-%m-%d')
-            cursor.execute("INSERT INTO transaction_history (username, date, amount, to_user) VALUES (%s, %s, %s, %s)",
-                           (sender_username, date, amount, to_user))
-            cursor.execute("INSERT INTO transaction_history (username, date, amount, to_user) VALUES (%s, %s, %s, %s)",
-                           (to_user, date, amount, sender_username))
+
+            # Details for the sender's transaction record
+            sent_detail = f"Sent {amount} to {to_user}"
+            received_detail = None  # Sender didn't receive money
+
+            cursor.execute("INSERT INTO transaction_history (username, date, amount, to_user, sent_detail, received_detail) VALUES (%s, %s, %s, %s, %s, %s)",
+                           (sender_username, date, amount, to_user, sent_detail, received_detail))
+
+            # Details for the receiver's transaction record
+            sent_detail = None  # Recipient didn't send money
+            received_detail = f"Received {amount} from {sender_username}"
+
+            cursor.execute("INSERT INTO transaction_history (username, date, amount, to_user, sent_detail, received_detail) VALUES (%s, %s, %s, %s, %s, %s)",
+                           (to_user, date, amount, sender_username, sent_detail, received_detail))
 
             # Commit the transaction
             conn.commit()
@@ -349,18 +384,34 @@ def transaction_history():
     if 'username' not in session:
         flash('Please log in.', 'danger')
         return redirect(url_for('login'))
+
     transactions = []
     try:
         conn = get_db_connection()
+        if conn is None:
+            flash("Failed to connect to database", 'danger')
+            return render_template('transaction_history.html', transactions=[], current_user=session['username'])
+
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM transaction_history WHERE username = %s ORDER BY date DESC", (session['username'],))
+
+        # Query to fetch transactions where the user is either the sender OR the receiver
+        query = """
+        SELECT date, amount, to_user, username, sent_detail, received_detail
+        FROM transaction_history
+        WHERE username = %s OR to_user = %s
+        ORDER BY date DESC
+        """
+        cursor.execute(query, (session['username'], session['username']))  # Use parameterized query
         transactions = cursor.fetchall()
+
     except mysql.connector.Error as err:
         flash(f"Database Error: {err}", 'danger')
     finally:
-        cursor.close()
-        conn.close()
-    return render_template('transaction_history.html', transactions=transactions)
+        if conn:
+            cursor.close()
+            conn.close()
+
+    return render_template('transaction_history.html', transactions=transactions, current_user=session['username'])
 
 # Logout Route
 @app.route('/logout')
@@ -370,4 +421,4 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True)     
